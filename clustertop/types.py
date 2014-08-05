@@ -25,7 +25,7 @@ class Host(object):
             hostids=self.host_data['hostid']
         )
         for inter in interfaces:
-            self.interfaces[inter['ip']] = inter
+            self.interfaces[inter['dns']] = inter
 
     @property
     def default_interface(self):
@@ -36,27 +36,26 @@ class Host(object):
         if self._dinter is None:
             self.get_interfaces()
             for ip, val in self.interfaces.iteritems():
-                if ip != '127.0.0.1' and ip != '0.0.0.0':
+                if val['main'] == '1':
                     self._dinter = val
                     break
-            self._dinter = None
         return self._dinter
 
-    def get_items(self, subset=""):
+    def get_items(self, subset=[]):
         """
         Grab the latest information on this hosts items
         using the zabbix api
         :param subset: Specify an item _key that limits what items to update
         :type subset: str
         """
-        search = {
-            "hostid": self.host_data['hostid'],
+        item_filter = {
+            'hostid': self.host_data['hostid'],
+            'key_': subset,
         }
-        if subset != "":
-            search['key_'] = subset
         items = self.zapi.item.get(
             output="extend",
-            search=search)
+            searchByAny=True,
+            filter=item_filter)
 
         for item in items:
             self.items[item['key_']] = item
@@ -66,5 +65,6 @@ class Host(object):
         Add an item to this host
         """
         properties['hostid'] = self.host_data['hostid']
+        print(self.default_interface)
         properties['interfaceid'] = self.default_interface['interfaceid']
         self.zapi.item.create(**properties)

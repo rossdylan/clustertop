@@ -13,13 +13,13 @@ class Poller(object):
     when a poll is complete
     """
 
-    def __init__(self, zhost, user, passwd, host_names, interval, item_key):
+    def __init__(self, zhost, user, passwd, host_names, interval, item_keys):
         self.thread_pool = ThreadPool(min(cpu_count(), len(host_names)))
         self.zapi = ZabbixAPI(zhost)
         self.zapi.login(user, passwd)
         self.hosts = [Host(hn, self.zapi) for hn in host_names]
         self.interval = interval
-        self.item_key = item_key
+        self.item_keys = item_keys
 
     def poll_complete(self):
         """
@@ -28,7 +28,7 @@ class Poller(object):
         for host in self.hosts:
             print(host.name)
             for key, item in host.items.iteritems():
-                if 'cpu.util[' in key:
+                if any([k in key for k in self.item_keys]):
                     print("\t{0}: {1}".format(key, item['lastvalue']))
 
     def poll(self):
@@ -36,7 +36,7 @@ class Poller(object):
         Use our internal threadpool to grab the latest data for each host
         from zabbix. This function then calls self.poll_complete
         """
-        self.thread_pool.map(lambda h: h.get_items(subset=self.item_key), self.hosts)
+        self.thread_pool.map(lambda h: h.get_items(subset=self.item_keys), self.hosts)
         self.poll_complete()
 
     def poll_loop(self):
