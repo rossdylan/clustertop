@@ -15,15 +15,13 @@ def main():
     zhost = cf.get('main', 'zabbix_host')
     user = cf.get('main', 'zabbix_user')
     passwd = cf.get('main', 'zabbix_pass')
-    keys = cf.get('main', 'item_keys').split(',')
     hosts = cf.get('main', 'hosts').split(',')
-    interval = cf.getint('main', 'update_interval')
 
     if args.command == 'bootstrap':
         bootstrapper(zhost, user, passwd, hosts)
     elif args.command == 'run':
-        poller = Poller(zhost, user, passwd, hosts, interval, keys)
+        poller = Poller(cf)
         poller.poll_loop()
     elif args.command == 'check':
-        poller = Poller(zhost, user, passwd, hosts, interval, keys)
+        poller = Poller(cf)
         poller.poll()

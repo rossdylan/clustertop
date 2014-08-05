@@ -13,13 +13,16 @@ class Poller(object):
     when a poll is complete
     """
 
-    def __init__(self, zhost, user, passwd, host_names, interval, item_keys):
-        self.thread_pool = ThreadPool(min(cpu_count(), len(host_names)))
-        self.zapi = ZabbixAPI(zhost)
-        self.zapi.login(user, passwd)
+    def __init__(self, config):
+        self.config = config
+        self.zapi = ZabbixAPI(config.get('main', 'zabbix_host'))
+        self.zapi.login(config.get('main', 'zabbix_user'),
+                        config.get('main', 'zabbix_pass'))
+        host_names = config.get('main', 'hosts').split(',')
         self.hosts = [Host(hn, self.zapi) for hn in host_names]
-        self.interval = interval
-        self.item_keys = item_keys
+        self.thread_pool = ThreadPool(min(cpu_count(), len(host_names)))
+        self.interval = config.getint('main', 'update_interval')
+        self.item_keys = config.get('main', 'item_keys').split(',')
 
     def poll_complete(self):
         """
