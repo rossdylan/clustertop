@@ -3,6 +3,9 @@ from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from clustertop.types import Host
 import time
+import socket
+import pickle
+import struct
 
 
 class Poller(object):
@@ -50,3 +53,44 @@ class Poller(object):
         while True:
             self.poll()
             time.sleep(self.interval)
+
+
+class GraphitePoller(Poller):
+    """
+    The Graphite poller takes data and sends it to graphite after each poll
+    interval. The graphite server to use is configured using the [graphite]
+    section of the config file.
+    """
+    def poll_complete(self):
+        """
+        Package up our current item state and send it to graphite
+        We pull out graphite connection information from our config file
+        """
+        graphite_host = self.config.get('graphite', 'host')
+        graphite_port = self.config.getint('graphite', 'port')
+        sock = socket.socket()
+        sock.connect((graphite_host, graphite_port))
+        sock.sendall(self._create_pickles())
+        sock.close()
+
+    def _clean_key(self, key):
+        return key.replace(',', '.').replace('[', '.').replace(']', '').replace('..', '.')
+
+    def _create_pickles(self):
+        """
+        Transform out internal representation of a zabbix item into
+        a graphite formatted pickle. The format is (path, (ctime, value))
+        The path is reversed(hostname) + '.' + key_
+        """
+        data = []
+        for host in self.hosts:
+            reversed_dns = reversed(host.default_interface['dns'].split('.'))
+            reversed_dns = '.'.join(reversed_dns)
+            for key, item in host.items.iteritems():
+                if any([k in key for k in self.item_keys]):
+                    graphite_path = '{0}.{1}'.format(reversed_dns, self._clean_key(key))
+                    data.append((graphite_path,
+                                (time.time(), item['lastvalue'])))
+        payload = pickle.dumps(data, protocol=2)
+        msg = struct.pack("!L", len(payload)) + payload
+        return msg
