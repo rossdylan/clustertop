@@ -1,3 +1,6 @@
+from pyzabbix import ZabbixAPI
+
+
 class Host(object):
     """
     This is an abstraction around a Host in zabbix
@@ -65,6 +68,20 @@ class Host(object):
         Add an item to this host
         """
         properties['hostid'] = self.host_data['hostid']
-        print(self.default_interface)
         properties['interfaceid'] = self.default_interface['interfaceid']
         self.zapi.item.create(**properties)
+
+
+def create_hosts(config):
+    """
+    Take in a config and return a list of Host objects
+    This is used in all areas of clustertop so its been
+    seperated into its own function.
+    :param config: The ConfigParser object holding the clustertop config
+    :type config: ConfigParser
+    """
+    zapi = ZabbixAPI(config.get('main', 'zabbix_host'))
+    zapi.login(config.get('main', 'zabbix_user'),
+               config.get('main', 'zabbix_pass'))
+    return [Host(hn, zapi)
+            for hn in config.get('main', 'hosts').split(',')]
