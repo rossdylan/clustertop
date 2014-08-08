@@ -1,7 +1,6 @@
-from pyzabbix import ZabbixAPI
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
-from clustertop.types import Host
+from clustertop.types import create_hosts
 import time
 import socket
 import pickle
@@ -18,12 +17,8 @@ class Poller(object):
 
     def __init__(self, config):
         self.config = config
-        self.zapi = ZabbixAPI(config.get('main', 'zabbix_host'))
-        self.zapi.login(config.get('main', 'zabbix_user'),
-                        config.get('main', 'zabbix_pass'))
-        host_names = config.get('main', 'hosts').split(',')
-        self.hosts = [Host(hn, self.zapi) for hn in host_names]
-        self.thread_pool = ThreadPool(min(cpu_count(), len(host_names)))
+        self.hosts = create_hosts(config)
+        self.thread_pool = ThreadPool(min(cpu_count(), len(self.hosts)))
         self.interval = config.getint('main', 'update_interval')
         self.item_keys = config.get('main', 'item_keys').split(',')
 
@@ -74,6 +69,13 @@ class GraphitePoller(Poller):
         sock.close()
 
     def _clean_key(self, key):
+        """
+        Quick and dirty way to turn a zabbix item key_ into a graphite path
+        :param key: The zabbix item key_ to clean
+        :type key: str
+        :return A graphite compatible path
+        :rtype str
+        """
         return key.replace(',', '.').replace('[', '.').replace(']', '').replace('..', '.')
 
     def _create_pickles(self):
@@ -81,6 +83,8 @@ class GraphitePoller(Poller):
         Transform out internal representation of a zabbix item into
         a graphite formatted pickle. The format is (path, (ctime, value))
         The path is reversed(hostname) + '.' + key_
+        :return A properly encoded pickle that graphite understands as metrics
+        :rtype str
         """
         data = []
         for host in self.hosts:
