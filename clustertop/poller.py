@@ -1,6 +1,7 @@
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from clustertop.types import create_hosts
+from collections import defaultdict
 import time
 import socket
 import pickle
@@ -22,6 +23,21 @@ class Poller(object):
         self.interval = config.getint('main', 'update_interval')
         self.item_keys = config.get('main', 'item_keys').split(',')
 
+        """
+        special keys are zabbix keys that are unique to a specific host
+        they have the format of...
+        [special:ion.rc.rit.edu]
+        slurm.jobs.running=system.run[squeue | grep " R" | wc -l]
+        slurm.jobs.pending=system.run[squeue | grep " PD" | wc -l]
+        """
+        self.special_keys = defaultdict(dict)
+        for section in config.sections():
+            parts = section.split(':')
+            if len(parts) == 2:
+                if parts[0] == 'special':
+                    for g_key, z_key in config.items(section):
+                        self.special_keys[parts[1]][z_key] = g_key
+
     def poll_complete(self):
         """
         This method intentionally left blank
@@ -37,7 +53,10 @@ class Poller(object):
         Use our internal threadpool to grab the latest data for each host
         from zabbix. This function then calls self.poll_complete
         """
-        self.thread_pool.map(lambda h: h.get_items(subset=self.item_keys), self.hosts)
+        def retrieve(host):
+            special_keys = self.special_keys[host.name].keys()
+            host.get_items(subset=self.item_keys + special_keys)
+        self.thread_pool.map(retrieve, self.hosts)
         self.poll_complete()
 
     def poll_loop(self):
@@ -91,8 +110,12 @@ class GraphitePoller(Poller):
             reversed_dns = reversed(host.default_interface['dns'].split('.'))
             reversed_dns = '.'.join(reversed_dns)
             for key, item in host.items.iteritems():
-                if any([k in key for k in self.item_keys]):
-                    graphite_path = '{0}.{1}'.format(reversed_dns, self._clean_key(key))
+                combined = self.item_keys + self.special_keys[host.name].keys()
+                if any([(k in key or k is key) for k in combined]):
+                    if key in self.special_keys[host.name]:
+                        graphite_path = self.special_keys[host.name][key]
+                    else:
+                        graphite_path = '{0}.{1}'.format(reversed_dns, self._clean_key(key))
                     data.append((graphite_path,
                                 (time.time(), item['lastvalue'])))
         payload = pickle.dumps(data, protocol=2)
