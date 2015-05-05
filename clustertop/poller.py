@@ -21,7 +21,14 @@ class Poller(object):
         self.hosts = create_hosts(config)
         self.thread_pool = ThreadPool(min(cpu_count(), len(self.hosts)))
         self.interval = config.getint('main', 'update_interval')
-        self.item_keys = config.get('main', 'item_keys').split(',')
+        # keys are defined as zabbix key:graphite key
+        self.item_keys = {}
+        for key in config.get('main', 'item_keys').split(','):
+            zabbix_and_graphite = key.split(':')
+            if len(zabbix_and_graphite) == 2:
+                self.item_keys[zabbix_and_graphite[0]] = zabbix_and_graphite[1]
+            else:
+                self.item_keys[zabbix_and_graphite[0]] = None
 
         """
         special keys are zabbix keys that are unique to a specific host
@@ -45,7 +52,7 @@ class Poller(object):
         for host in self.hosts:
             print(host.name)
             for key, item in host.items.iteritems():
-                if any([k in key for k in self.item_keys]):
+                if key in self.item_keys:
                     print("\t{0}: {1}".format(key, item['lastvalue']))
 
     def poll(self):
@@ -55,7 +62,7 @@ class Poller(object):
         """
         def retrieve(host):
             special_keys = self.special_keys[host.name].keys()
-            host.get_items(subset=self.item_keys + special_keys)
+            host.get_items(subset=self.item_keys.keys() + special_keys)
         self.thread_pool.map(retrieve, self.hosts)
         self.poll_complete()
 
@@ -110,14 +117,19 @@ class GraphitePoller(Poller):
             reversed_dns = reversed(host.default_interface['dns'].split('.'))
             reversed_dns = '.'.join(reversed_dns)
             for key, item in host.items.iteritems():
-                combined = self.item_keys + self.special_keys[host.name].keys()
-                if any([(k in key or k is key) for k in combined]):
-                    if key in self.special_keys[host.name]:
-                        graphite_path = self.special_keys[host.name][key]
+                graphite_path = None
+                if key in self.item_keys:
+                    custom_graphite = self.item_keys[key]
+                    if custom_graphite is not None:
+                        graphite_path = '{0}.{1}'.format(reversed_dns,
+                                                         custom_graphite)
                     else:
-                        graphite_path = '{0}.{1}'.format(reversed_dns, self._clean_key(key))
-                    data.append((graphite_path,
-                                (time.time(), item['lastvalue'])))
+                        graphite_path = '{0}.{1}'.format(reversed_dns,
+                                                         self._clean_key(key))
+                elif key in self.special_keys[host.name]:
+                    graphite_path = self.special_keys[host.name][key]
+                if graphite_path is not None:
+                    data.append((graphite_path, (time.time(), item['lastvalue'])))
         payload = pickle.dumps(data, protocol=2)
         msg = struct.pack("!L", len(payload)) + payload
         return msg
