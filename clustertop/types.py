@@ -81,6 +81,9 @@ def create_hosts(config):
     :type config: ConfigParser
     """
     zapi = ZabbixAPI(config.get('main', 'zabbix_host'))
+    if config.has_option('main', 'zabbix_http_user') and config.has_option('main', 'zabbix_http_pass'):
+        zapi.session.auth = (config.get('main', 'zabbix_http_user'),
+                             config.get('main', 'zabbix_http_pass'))
     zapi.login(config.get('main', 'zabbix_user'),
                config.get('main', 'zabbix_pass'))
     return [Host(hn, zapi)
