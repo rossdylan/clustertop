@@ -1,5 +1,4 @@
 from clustertop.poller import Poller
-from clustertop.bootstrap import bootstrapper, create_tasseo_dashboards
 from ConfigParser import ConfigParser
 import argparse
 import importlib
@@ -9,7 +8,7 @@ import importlib
 def main():
     parser = argparse.ArgumentParser(
         description='Control the cluster top backend')
-    parser.add_argument('command', choices=['check', 'run', 'bootstrap', 'tasseo'])
+    parser.add_argument('command', choices=['check', 'run'])
     parser.add_argument('--config', type=str, default='/etc/clustertop')
     args = parser.parse_args()
     cf = ConfigParser()
@@ -20,14 +19,10 @@ def main():
         module = importlib.import_module(mod_path)
         the_poller = getattr(module, cls)
 
-    if args.command == 'bootstrap':
-        bootstrapper(cf)
     elif args.command == 'run':
         poller = the_poller(cf)
         poller.poll_loop()
     elif args.command == 'check':
         poller = the_poller(cf)
         poller.poll()
-    elif args.command == 'tasseo':
-        create_tasseo_dashboards(cf)
 

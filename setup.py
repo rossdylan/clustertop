@@ -2,6 +2,7 @@ from setuptools import setup, find_packages
 
 requires = [
     'pyzabbix',
+    'gevent',
 ]
 
 setup(name='clustertop',

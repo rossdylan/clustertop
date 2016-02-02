@@ -11,11 +11,12 @@ class Host(object):
         self.name = name
         self.items = {}
         self.interfaces = {}
-        self.host_data = self.zapi.host.get(
+        self.hosts = self.zapi.host.get(
             output="extend",
             search={
                 "name": name
-            })[0]
+            })
+        self.host_data = self.hosts[0]
         self._dinter = None  # Default interface
 
     def get_interfaces(self):
@@ -52,16 +53,16 @@ class Host(object):
         :type subset: str
         """
         item_filter = {
-            'hostid': self.host_data['hostid'],
             'key_': subset,
         }
         items = self.zapi.item.get(
             output="extend",
+            hostids=self.host_data['hostid'],
             searchByAny=True,
             filter=item_filter)
-
         for item in items:
-            self.items[item['key_']] = item
+            if item['hostid'] == self.host_data['hostid']:
+                self.items[item['key_']] = item
 
     def add_item(self, **properties):
         """

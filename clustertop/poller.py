@@ -1,11 +1,20 @@
-from multiprocessing import cpu_count
-from multiprocessing.pool import ThreadPool
+from gevent import monkey
+monkey.patch_all()
+
+import gevent
 from clustertop.types import create_hosts
 from collections import defaultdict
 import time
 import socket
 import pickle
 import struct
+
+
+def retrieve_keys(host, keys):
+    """
+    Call out to zabbix and grab the keys we are interested in
+    """
+    host.get_items(subset=keys)
 
 
 class Poller(object):
@@ -19,11 +28,11 @@ class Poller(object):
     def __init__(self, config):
         self.config = config
         self.hosts = create_hosts(config)
-        self.thread_pool = ThreadPool(min(cpu_count(), len(self.hosts)))
         self.interval = config.getint('main', 'update_interval')
         # keys are defined as zabbix key:graphite key
         self.item_keys = {}
         for key in config.get('main', 'item_keys').split(','):
+            key = key.replace('|', ',')
             zabbix_and_graphite = key.split(':')
             if len(zabbix_and_graphite) == 2:
                 self.item_keys[zabbix_and_graphite[0]] = zabbix_and_graphite[1]
@@ -50,20 +59,22 @@ class Poller(object):
         This method intentionally left blank
         """
         for host in self.hosts:
-            print(host.name)
             for key, item in host.items.iteritems():
-                if key in self.item_keys:
-                    print("\t{0}: {1}".format(key, item['lastvalue']))
+                if key in self.item_keys or key in self.special_keys[host.name]:
+                    print("{0}: {1} -> {2}".format(host.name, key, item['lastvalue']))
 
     def poll(self):
         """
         Use our internal threadpool to grab the latest data for each host
         from zabbix. This function then calls self.poll_complete
         """
-        def retrieve(host):
-            special_keys = self.special_keys[host.name].keys()
-            host.get_items(subset=self.item_keys.keys() + special_keys)
-        self.thread_pool.map(retrieve, self.hosts)
+        coros = []
+        for host in self.hosts:
+            keys = self.item_keys.keys() + self.special_keys[host.name].keys()
+            coros.append(
+                gevent.spawn(retrieve_keys, host, keys)
+            )
+        gevent.joinall(coros)
         self.poll_complete()
 
     def poll_loop(self):
@@ -87,11 +98,12 @@ class GraphitePoller(Poller):
         Package up our current item state and send it to graphite
         We pull out graphite connection information from our config file
         """
+        pick = self._create_pickles()
         graphite_host = self.config.get('graphite', 'host')
         graphite_port = self.config.getint('graphite', 'port')
         sock = socket.socket()
         sock.connect((graphite_host, graphite_port))
-        sock.sendall(self._create_pickles())
+        sock.sendall(pick)
         sock.close()
 
     def _clean_key(self, key):
@@ -129,7 +141,9 @@ class GraphitePoller(Poller):
                 elif key in self.special_keys[host.name]:
                     graphite_path = self.special_keys[host.name][key]
                 if graphite_path is not None:
+                    print('{0} -> {1}'.format(graphite_path, item['lastvalue']))
                     data.append((graphite_path, (time.time(), item['lastvalue'])))
+        print data
         payload = pickle.dumps(data, protocol=2)
         msg = struct.pack("!L", len(payload)) + payload
         return msg
