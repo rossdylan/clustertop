@@ -4,7 +4,6 @@ import argparse
 import importlib
 
 
-
 def main():
     parser = argparse.ArgumentParser(
         description='Control the cluster top backend')
@@ -18,11 +17,9 @@ def main():
         mod_path, cls = cf.get('main', 'poller').split(':')
         module = importlib.import_module(mod_path)
         the_poller = getattr(module, cls)
-
-    elif args.command == 'run':
+    if args.command == 'run':
         poller = the_poller(cf)
         poller.poll_loop()
     elif args.command == 'check':
         poller = the_poller(cf)
         poller.poll()
-
