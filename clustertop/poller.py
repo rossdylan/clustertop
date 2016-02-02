@@ -143,7 +143,6 @@ class GraphitePoller(Poller):
                 if graphite_path is not None:
                     print('{0} -> {1}'.format(graphite_path, item['lastvalue']))
                     data.append((graphite_path, (time.time(), item['lastvalue'])))
-        print data
         payload = pickle.dumps(data, protocol=2)
         msg = struct.pack("!L", len(payload)) + payload
         return msg
